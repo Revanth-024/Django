@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Django Project Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: The SPA is designed as an interactive dashboard. The top section provides a high-level overview with a bar chart showing project distribution by difficulty, coupled with filter buttons. This allows users to immediately grasp the content and narrow it down. The main content area uses a responsive card grid to display projects, a highly scannable format. Clicking a card triggers a modal for a detailed view. This structure was chosen to facilitate a 'scan, filter, and dive-deep' user flow, which is ideal for exploring a list of options without overwhelming the user with all details at once. -->
+    <!-- Visualization & Content Choices:
+        - Report Info: Project counts per difficulty. -> Goal: Inform (overview). -> Viz/Presentation: Horizontal Bar Chart (Chart.js/Canvas). -> Interaction: Static. -> Justification: Offers a quick, visual summary of the project landscape.
+        - Report Info: Full list of projects with categories. -> Goal: Organize & Compare. -> Viz/Presentation: Interactive card grid. -> Interaction: Filterable by difficulty via buttons. Click triggers a modal. -> Justification: Cards are excellent for scannable summaries. Filtering is the primary user task for this content.
+        - Report Info: Detailed project information (Description, Concepts, Features). -> Goal: Inform (details). -> Viz/Presentation: Structured text inside a modal popup. -> Interaction: Close modal. -> Justification: A modal provides a focused view for detailed reading without losing the user's place in the main grid.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF8;
+            color: #383838;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 200px;
+            max-height: 250px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 250px;
+            }
+        }
+        .card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            will-change: transform;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .filter-btn.active {
+            background-color: #115E59;
+            color: #FFFFFF;
+        }
+        .modal {
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-content {
+            transition: transform 0.3s ease;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="app">
+        <header class="bg-white shadow-sm">
+            <div class="container mx-auto px-4 py-5 text-center">
+                <h1 class="text-3xl md:text-4xl font-bold text-teal-900">Interactive Django Project Guide</h1>
+                <p class="mt-2 text-lg text-gray-600">Explore project ideas to build your skills and portfolio.</p>
+            </div>
+        </header>
+
+        <main class="container mx-auto px-4 py-8 md:py-12">
+            <section id="overview" class="mb-12">
+                <div class="bg-white rounded-lg shadow p-6 max-w-4xl mx-auto">
+                    <h2 class="text-2xl font-bold text-center mb-2 text-teal-800">Projects by Difficulty</h2>
+                    <p class="text-center text-gray-500 mb-6">This chart provides a quick overview of the project distribution. Use the filters below to explore the ideas in more detail.</p>
+                    <div class="chart-container">
+                        <canvas id="difficultyChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section id="projects">
+                <div class="flex justify-center items-center gap-2 md:gap-4 mb-8 flex-wrap">
+                    <button data-filter="All" class="filter-btn active font-medium py-2 px-4 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">All (12)</button>
+                    <button data-filter="Beginner" class="filter-btn font-medium py-2 px-4 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">Beginner (4)</button>
+                    <button data-filter="Intermediate" class="filter-btn font-medium py-2 px-4 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">Intermediate (4)</button>
+                    <button data-filter="Advanced" class="filter-btn font-medium py-2 px-4 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">Advanced (4)</button>
+                </div>
+
+                <div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="project-modal" class="modal invisible opacity-0 fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
+        <div class="modal-content transform -translate-y-10 bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 id="modal-title" class="text-2xl font-bold text-teal-900"></h2>
+                <button id="modal-close-btn" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </div>
+            <div class="p-6">
+                <div class="mb-6">
+                    <h3 class="font-semibold text-lg text-gray-800 mb-2">Description</h3>
+                    <p id="modal-description" class="text-gray-600 leading-relaxed"></p>
+                </div>
+                <div class="mb-6">
+                    <h3 class="font-semibold text-lg text-gray-800 mb-2">Key Django Concepts</h3>
+                    <ul id="modal-concepts" class="list-disc list-inside text-gray-600 space-y-1"></ul>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-lg text-gray-800 mb-2">Features to Add</h3>
+                    <ul id="modal-features" class="list-disc list-inside text-gray-600 space-y-1"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const projectsData = [
+                { id: 1, title: "Simple Blog Application", category: "Beginner", description: "A classic 'Hello World' for web frameworks. Users can create, view, edit, and delete blog posts.", concepts: ["Models (for Post, Comment)", "Views, Templates, URLs", "Admin Interface", "Basic Forms"], features: ["User authentication", "Comments", "Tags/Categories", "Search functionality"] },
+                { id: 2, title: "Basic To-Do List App", category: "Beginner", description: "Allows users to add, mark as complete, and delete tasks.", concepts: ["Models (for Task)", "Forms", "Views (handling GET/POST requests)", "Template rendering"], features: ["User accounts", "Due dates", "Task prioritization"] },
+                { id: 3, title: "Personal Portfolio Website", category: "Beginner", description: "Showcase your projects, skills, and contact information.", concepts: ["Static files (CSS, JS, images)", "Custom templates", "Simple views"], features: ["A contact form with email integration", "A blog section (like project #1)"] },
+                { id: 4, title: "Recipe Book / Manager", category: "Beginner", description: "Store and display your favorite recipes, including ingredients, instructions, and categories.", concepts: ["Multiple models (Recipe, Ingredient)", "Foreign keys, Model relationships", "Image uploads (for recipe photos)"], features: ["User ratings", "Search by ingredient", "Public/private recipes"] },
+                { id: 5, title: "E-commerce Product Catalog", category: "Intermediate", description: "Display various products with details, images, prices, and categories. Focus on the product display aspect rather than payment gateways initially.", concepts: ["Complex models (Product, Category)", "Many-to-many relationships", "Custom template tags"], features: ["Shopping cart (local storage)", "User reviews", "Filtering/sorting"] },
+                { id: 6, title: "Social Media Clone (simplified)", category: "Intermediate", description: "A basic platform where users can post short messages/updates, follow other users, and like posts.", concepts: ["User authentication", "UserProfile model", "Foreign keys (for posts, likes, follows)", "Query optimization"], features: ["Image/video uploads", "Direct messaging", "Notifications"] },
+                { id: 7, title: "Job Board / Listing Site", category: "Intermediate", description: "Allow companies to post job openings and users to browse and search for jobs.", concepts: ["User roles (employer, job seeker)", "Robust search", "Pagination", "File uploads (for resumes)"], features: ["Application submission", "Job alerts", "Company profiles"] },
+                { id: 8, title: "Online Survey/Quiz Platform", category: "Intermediate", description: "Create multiple-choice or open-ended surveys/quizzes, collect responses, and display results.", concepts: ["Multiple models (Survey, Question, Choice, Response)", "Dynamic forms", "Data visualization (e.g., Chart.js)"], features: ["User authentication for creators", "Time limits", "Random question order"] },
+                { id: 9, title: "Real-time Chat Application", category: "Advanced", description: "A simple chat application where users can send messages in real-time.", concepts: ["Django Channels (for WebSockets)", "Asynchronous programming", "User authentication"], features: ["Private chats", "Chat rooms", "Message history"] },
+                { id: 10, title: "Bookstore with Payment Integration", category: "Advanced", description: "An e-commerce site focused on books, including a full shopping cart and integration with a payment gateway (e.g., Stripe, PayPal).", concepts: ["E-commerce models (Order, OrderItem)", "Session management", "Payment gateway APIs", "Webhooks"], features: ["Order history", "Shipping integration", "Coupon codes"] },
+                { id: 11, title: "RESTful API with DRF", category: "Advanced", description: "Build an API for any of the above projects (e.g., blog, e-commerce) using DRF, allowing other applications to interact with your data.", concepts: ["DRF serializers, Viewsets, Routers", "Permissions", "Authentication (Token, OAuth2)"], features: ["Throttling", "Filtering", "Custom endpoints"] },
+                { id: 12, title: "Learning Management System (LMS)", category: "Advanced", description: "A platform to create courses, add lessons (text, video links), and track student progress.", concepts: ["User roles (instructor, student)", "Complex relationships", "Content management", "Progress tracking"], features: ["Quizzes within lessons", "Discussion forums", "Certificates"] }
+            ];
+
+            const projectsGrid = document.getElementById('projects-grid');
+            const filterButtons = document.querySelectorAll('.filter-btn');
+            const modal = document.getElementById('project-modal');
+            const modalContent = modal.querySelector('.modal-content');
+            const modalCloseBtn = document.getElementById('modal-close-btn');
+
+            let currentFilter = 'All';
+
+            const renderProjects = () => {
+                projectsGrid.innerHTML = '';
+                const filteredProjects = currentFilter === 'All'
+                    ? projectsData
+                    : projectsData.filter(p => p.category === currentFilter);
+
+                filteredProjects.forEach(project => {
+                    const categoryColors = {
+                        'Beginner': 'bg-green-100 text-green-800',
+                        'Intermediate': 'bg-yellow-100 text-yellow-800',
+                        'Advanced': 'bg-red-100 text-red-800',
+                    };
+
+                    const card = document.createElement('div');
+                    card.className = 'card bg-white rounded-lg shadow p-6 flex flex-col cursor-pointer h-full';
+                    card.dataset.projectId = project.id;
+                    card.innerHTML = `
+                        <div class="flex-grow">
+                            <span class="inline-block px-3 py-1 text-sm font-semibold rounded-full ${categoryColors[project.category] || 'bg-gray-200 text-gray-800'}">${project.category}</span>
+                            <h3 class="text-xl font-bold mt-4 mb-2 text-gray-800">${project.title}</h3>
+                            <p class="text-gray-600 text-sm">${project.description.substring(0, 100)}${project.description.length > 100 ? '...' : ''}</p>
+                        </div>
+                        <div class="mt-4 text-teal-700 font-semibold text-sm">View Details →</div>
+                    `;
+                    projectsGrid.appendChild(card);
+                });
+            };
+
+            const openModal = (projectId) => {
+                const project = projectsData.find(p => p.id == projectId);
+                if (!project) return;
+                
+                document.getElementById('modal-title').textContent = project.title;
+                document.getElementById('modal-description').textContent = project.description;
+
+                const conceptsList = document.getElementById('modal-concepts');
+                conceptsList.innerHTML = '';
+                project.concepts.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = item;
+                    conceptsList.appendChild(li);
+                });
+
+                const featuresList = document.getElementById('modal-features');
+                featuresList.innerHTML = '';
+                project.features.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = item;
+                    featuresList.appendChild(li);
+                });
+
+                modal.classList.remove('invisible', 'opacity-0');
+                modalContent.classList.remove('-translate-y-10');
+            };
+
+            const closeModal = () => {
+                modal.classList.add('opacity-0');
+                modalContent.classList.add('-translate-y-10');
+                setTimeout(() => modal.classList.add('invisible'), 300);
+            };
+
+            filterButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    currentFilter = button.dataset.filter;
+                    filterButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    renderProjects();
+                });
+            });
+            
+            projectsGrid.addEventListener('click', (e) => {
+                const card = e.target.closest('.card');
+                if (card) {
+                    openModal(card.dataset.projectId);
+                }
+            });
+
+            modalCloseBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === "Escape" && !modal.classList.contains('invisible')) {
+                    closeModal();
+                }
+            });
+
+            const renderChart = () => {
+                const ctx = document.getElementById('difficultyChart').getContext('2d');
+                const categories = ['Beginner', 'Intermediate', 'Advanced'];
+                const data = categories.map(cat => projectsData.filter(p => p.category === cat).length);
+                
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: categories,
+                        datasets: [{
+                            label: '# of Projects',
+                            data: data,
+                            backgroundColor: [
+                                'rgba(5, 150, 105, 0.6)',
+                                'rgba(245, 158, 11, 0.6)',
+                                'rgba(220, 38, 38, 0.6)'
+                            ],
+                            borderColor: [
+                                'rgb(5, 150, 105)',
+                                'rgb(245, 158, 11)',
+                                'rgb(220, 38, 38)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                enabled: true
+                            }
+                        }
+                    }
+                });
+            };
+
+            renderChart();
+            renderProjects();
+        });
+    </script>
+</body>
+</html>
